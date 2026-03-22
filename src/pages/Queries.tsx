@@ -5,8 +5,9 @@ import Ticker from '../components/Ticker'
 import MiniGraph from '../components/MiniGraph'
 import { QUERIES } from '../data/mockdata'
 import type { Query } from '../data/mockdata'
+import { api } from '../api/bharatgraph'
 
-const ALL_QUERIES: Query[] = [
+const _INITIAL_QUERIES: Query[] = [
   ...QUERIES,
   {
     id: 'q4', number: 4,
@@ -48,10 +49,11 @@ export default function Queries() {
   const nav = useNavigate()
   const [openId, setOpenId]     = useState<string | null>(null)
   const [search, setSearch]     = useState('')
-  const [newQuery, setNewQuery] = useState('')
-  const [isRunning, setIsRunning] = useState(false)
+  const [newQuery,    setNewQuery]    = useState('')
+  const [isRunning,   setIsRunning]   = useState(false)
+  const [queryList,   setQueryList]   = useState<Query[]>(_INITIAL_QUERIES)
 
-  const filtered = ALL_QUERIES.filter(q =>
+  const filtered = queryList.filter(q =>
     search === '' || q.question.toLowerCase().includes(search.toLowerCase())
   )
 
@@ -62,9 +64,26 @@ export default function Queries() {
   const handleNewQuery = async () => {
     if (!newQuery.trim()) return
     setIsRunning(true)
-    await new Promise(r => setTimeout(r, 1400))
+    try {
+      const res = await api.query(newQuery)
+      const newQ: Query = {
+        id:             `q${Date.now()}`,
+        number:         queryList.length + 1,
+        question:       res.question,
+        answer:         res.answer,
+        timestamp:      new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        edgesTraversed: res.sources_used,
+        sources:        res.sources_used,
+        cypherGenerated: `MATCH (a:Entity)-[r:RELATION]->(b:Entity) WHERE toLower(a.name) CONTAINS toLower('${newQuery.split(' ')[0]}') RETURN a,r,b LIMIT 20`,
+        usedNodes:      [...new Set((res.evidence || []).flatMap((e: any) => [e.subject, e.object]).filter(Boolean))].slice(0, 5),
+      }
+      setQueryList(prev => [newQ, ...prev])
+      setNewQuery('')
+      setOpenId(newQ.id)
+    } catch (err) {
+      console.error('Query failed:', err)
+    }
     setIsRunning(false)
-    nav('/terminal')
   }
 
   return (

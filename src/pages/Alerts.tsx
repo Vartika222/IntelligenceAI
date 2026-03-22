@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import AlertMap from '../components/AlertMap'
 import Ticker from '../components/Ticker'
 import MiniGraph from '../components/MiniGraph'
 import { ALERTS as MOCK_ALERTS } from '../data/mockdata'
@@ -35,7 +36,8 @@ export default function Alerts() {
   const nav = useNavigate()
   const [openId,     setOpenId]     = useState<string | null>(null)
   const [filter,     setFilter]     = useState<Filter>('ALL')
-  const [liveAlerts, setLiveAlerts] = useState<Alert[]>([])
+  const [liveAlerts,    setLiveAlerts]    = useState<Alert[]>([])
+  const [focusedAlert, setFocusedAlert] = useState<Alert | null>(null)
 
   useEffect(() => {
     api.alerts()
@@ -152,7 +154,7 @@ export default function Alerts() {
                 return (
                   <div
                     key={alert.id}
-                    onClick={() => toggle(alert.id)}
+                    onClick={() => { toggle(alert.id); setFocusedAlert(alert) }}
                     className="relative p-4 cursor-pointer transition-colors duration-150"
                     style={{
                       borderRight:   colIdx < 2 ? '1px solid rgba(200,240,37,0.12)' : 'none',
@@ -358,78 +360,16 @@ export default function Alerts() {
           </div>
         ))}
 
-        {/* ── two big feature cards ── */}
-        <div
-          className="grid border-t border-[rgba(200,240,37,0.12)]"
-          style={{ gridTemplateColumns: '1fr 1fr', minHeight: 240 }}
-        >
-          {/* flat map */}
-          <div className="flex flex-col p-5 border-r border-[rgba(200,240,37,0.12)] bg-[rgba(200,240,37,0.01)]">
-            <div className="font-mono text-xxs text-[rgba(255,255,255,0.2)] tracking-wider mb-3">
-              ACTIVE EVENT MAP
-            </div>
-            <div className="flex-1 relative overflow-hidden border border-[rgba(200,240,37,0.12)] bg-[#020e14]" style={{ minHeight: 180 }}>
-              <svg viewBox="0 0 800 400" className="w-full h-full opacity-70">
-                <rect x="0" y="0" width="800" height="400" fill="#020e14" />
-                {[100, 200, 300, 400, 500, 600, 700].map(x => (
-                  <line key={x} x1={x} y1="0" x2={x} y2="400" stroke="rgba(200,240,37,0.05)" strokeWidth="0.5" />
-                ))}
-                {[80, 160, 240, 320].map(y => (
-                  <line key={y} x1="0" y1={y} x2="800" y2={y} stroke="rgba(200,240,37,0.05)" strokeWidth="0.5" />
-                ))}
-                <line x1="0" y1="200" x2="800" y2="200" stroke="rgba(200,240,37,0.1)" strokeWidth="0.5" strokeDasharray="4 4" />
-                {ALERTS.filter(a => a.lat && a.lng).map(alert => {
-                  const x = ((alert.lng! + 180) / 360) * 800
-                  const y = ((90 - alert.lat!) / 180) * 400
-                  return (
-                    <g key={alert.id}>
-                      <circle cx={x} cy={y} r="6" fill="none" stroke={SEV_COLOR[alert.severity]} strokeWidth="1" opacity="0.5">
-                        <animate attributeName="r" values="4;10;4" dur="2s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite" />
-                      </circle>
-                      <circle cx={x} cy={y} r="3" fill={SEV_COLOR[alert.severity]} opacity="0.9" />
-                    </g>
-                  )
-                })}
-              </svg>
-              <div className="absolute bottom-1.5 right-2 font-mono text-[10px] text-[rgba(255,255,255,0.2)] tracking-wider">
-                EQUIRECTANGULAR · LIVE EVENTS
-              </div>
-            </div>
+        {/* ── full-width map ── */}
+        <div className="border-t border-[rgba(200,240,37,0.12)]" style={{ height: 420, position: 'relative' }}>
+          <div className="font-mono text-xxs text-[rgba(255,255,255,0.2)] tracking-wider"
+            style={{ position: 'absolute', top: 12, left: 16, zIndex: 1000, pointerEvents: 'none' }}>
+            ACTIVE EVENT MAP
           </div>
-
-          {/* recent queries */}
-          <div className="flex flex-col p-5">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-mono text-xxs text-[rgba(255,255,255,0.2)] tracking-wider">RECENT QUERIES</span>
-              <button
-                onClick={() => nav('/queries')}
-                className="font-mono text-xxs text-[rgba(255,255,255,0.2)] border border-[rgba(200,240,37,0.12)] px-2 py-0.5 bg-transparent cursor-pointer hover:text-[rgba(200,240,37,0.45)] transition-colors"
-              >
-                ALL →
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {[
-                { q: 'China leverage over India via rare earths', edges: 14, t: '08:14' },
-                { q: 'Neighbors with overlapping defense agreements', edges: 22, t: '07:52' },
-                { q: 'India-Pakistan media tone since Balakot', edges: 18, t: 'Yesterday' },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => nav('/queries')}
-                  className="flex justify-between items-start gap-2 p-2.5 border border-[rgba(200,240,37,0.12)] cursor-pointer transition-all duration-150 hover:border-[rgba(200,240,37,0.3)] hover:bg-[rgba(200,240,37,0.02)]"
-                >
-                  <div className="font-mono text-xs text-[rgba(255,255,255,0.55)] flex-1 leading-snug">{item.q}</div>
-                  <div className="shrink-0 text-right">
-                    <div className="font-mono text-xxs text-[rgba(200,240,37,0.45)]">{item.edges} edges</div>
-                    <div className="font-mono text-xxs text-[rgba(255,255,255,0.2)]">{item.t}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <AlertMap alerts={ALERTS} focusedAlert={focusedAlert} />
         </div>
+
+
       </div>
     </div>
   )

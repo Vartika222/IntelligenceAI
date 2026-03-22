@@ -485,11 +485,141 @@ function TimeMachine({ value, onChange }: { value: Date; onChange: (d: Date) => 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTEL PANEL (right column)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NODE IMPACT GRAPH — mini D3 graph shown in IMPACT tab when node clicked
+// Shows the selected node + its direct connections colored by india_impact
+// ─────────────────────────────────────────────────────────────────────────────
+function NodeImpactGraph({ nodeId, nodeDetail }: { nodeId: string; nodeDetail: any }) {
+  const svgRef  = useRef<SVGSVGElement>(null)
+  const [dims]  = useState({ w: 340, h: 180 })
+
+  useEffect(() => {
+    if (!svgRef.current || !nodeDetail) return
+    const { w, h } = dims
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const impactColor = (impact: string) =>
+      impact === 'HIGH' ? '#FF3131' : impact === 'MEDIUM' ? '#FFB800' : 'rgba(200,240,37,0.5)'
+
+    // Build nodes: center + up to 8 connected peers
+    const outgoing = (nodeDetail.outgoing_edges || []).slice(0, 5)
+    const incoming = (nodeDetail.incoming_edges || []).slice(0, 3)
+    const allEdges = [...outgoing, ...incoming]
+
+    const centerNode = { id: nodeId, cx: true }
+    const peerNodes  = allEdges.map((e: any, i: number) => ({
+      id:     e.target || e.source,
+      impact: e.india_impact || 'LOW',
+      cx:     false,
+      angle:  (i / allEdges.length) * Math.PI * 2,
+    }))
+
+    const linkData = allEdges.map((e: any) => ({
+      source: nodeId,
+      target: e.target || e.source,
+      impact: e.india_impact || 'LOW',
+      relation: (e.relation || '').replace(/_/g, ' '),
+      outgoing: !!e.target,
+    }))
+
+    const allNodes = [centerNode, ...peerNodes] as any[]
+
+    const sim = d3.forceSimulation(allNodes)
+      .force('link', d3.forceLink(linkData).id((d: any) => d.id).distance(65).strength(0.8))
+      .force('charge', d3.forceManyBody().strength(-120))
+      .force('center', d3.forceCenter(w / 2, h / 2))
+      .force('collision', d3.forceCollide(18))
+
+    const g = svg.append('g')
+
+    const links = g.append('g').selectAll('line')
+      .data(linkData)
+      .join('line')
+      .attr('stroke', (d: any) => impactColor(d.impact))
+      .attr('stroke-width', (d: any) => d.impact === 'HIGH' ? 2 : 1)
+      .attr('stroke-opacity', 0.7)
+      .attr('stroke-dasharray', (d: any) => !d.outgoing ? '3,2' : 'none')
+
+    const nodeGs = g.append('g').selectAll('g')
+      .data(allNodes)
+      .join('g')
+
+    nodeGs.append('circle')
+      .attr('r', (d: any) => d.cx ? 12 : 7)
+      .attr('fill', (d: any) => d.cx ? 'rgba(200,240,37,0.15)' : `${impactColor(d.impact)}22`)
+      .attr('stroke', (d: any) => d.cx ? '#c8f025' : impactColor(d.impact))
+      .attr('stroke-width', (d: any) => d.cx ? 2 : 1)
+
+    nodeGs.append('text')
+      .attr('dy', (d: any) => d.cx ? 20 : 16)
+      .attr('text-anchor', 'middle')
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('font-size', '7px')
+      .attr('fill', (d: any) => d.cx ? '#c8f025' : 'rgba(255,255,255,0.5)')
+      .text((d: any) => {
+        const name = String(d.id)
+        return name.length > 10 ? name.slice(0, 10) + '…' : name
+      })
+
+    sim.on('tick', () => {
+      links
+        .attr('x1', (d: any) => (d.source as any).x)
+        .attr('y1', (d: any) => (d.source as any).y)
+        .attr('x2', (d: any) => (d.target as any).x)
+        .attr('y2', (d: any) => (d.target as any).y)
+      nodeGs.attr('transform', (d: any) => `translate(${d.x},${d.y})`)
+    })
+
+    return () => { sim.stop() }
+  }, [nodeId, nodeDetail])
+
+  if (!nodeDetail || (nodeDetail.outgoing_edges?.length === 0 && nodeDetail.incoming_edges?.length === 0)) {
+    return null
+  }
+
+  return (
+    <div style={{ marginBottom: 16, border: `1px solid rgba(200,240,37,0.12)`, background: 'rgba(0,0,0,0.2)' }}>
+      <div style={{ padding: '6px 10px', borderBottom: `1px solid rgba(200,240,37,0.08)`, fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>
+        CONNECTION MAP
+      </div>
+      <svg ref={svgRef} width={dims.w} height={dims.h} style={{ display: 'block', width: '100%' }} />
+    </div>
+  )
+}
+
 function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoNode | null; alerts: any[]; nodes: GeoNode[]; edges: GeoEdge[] }) {
-  const [tab, setTab] = useState<'IMPACT' | 'ALERTS' | 'DETAIL'>('IMPACT')
+  const [tab, setTab]         = useState<'IMPACT' | 'ALERTS' | 'DETAIL'>('IMPACT')
+  const [nodeDetail, setNodeDetail] = useState<any>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const nav = useNavigate()
 
-  const intel   = selectedNode ? CONSEQUENCES[selectedNode.id] : null
+  // Fetch real node detail from API when selection changes
+  useEffect(() => {
+    if (!selectedNode) { setNodeDetail(null); return }
+    setDetailLoading(true)
+    api.node(selectedNode.id)
+      .then(d => setNodeDetail(d))
+      .catch(() => setNodeDetail(null))
+      .finally(() => setDetailLoading(false))
+  }, [selectedNode?.id])
+
+  // Compute dynamic impact from real edges
+  const realEdges   = nodeDetail ? [...(nodeDetail.outgoing_edges || []), ...(nodeDetail.incoming_edges || [])] : []
+  const impactMap: Record<string, number> = { HIGH: 75, MEDIUM: 45, LOW: 15, NONE: 0 }
+  const dynamicScore = Math.min(100, realEdges.reduce((sum: number, e: any) =>
+    sum + (impactMap[e.india_impact] || 0), 0))
+  const highEdgesCount = realEdges.filter((e: any) => e.india_impact === 'HIGH').length
+  const domains = [...new Set(realEdges.map((e: any) => e.domain).filter(Boolean))] as string[]
+
+  // Fallback to hardcoded for key nodes, otherwise use dynamic
+  const staticIntel = selectedNode ? CONSEQUENCES[selectedNode.id] : null
+  const score       = staticIntel?.score ?? dynamicScore
+  const bullets     = staticIntel?.bullets ?? realEdges.slice(0, 3).map((e: any) =>
+    `${e.relation?.replace(/_/g, ' ')} → ${e.target || e.source} [${e.india_impact}]`)
+  const domainList  = staticIntel?.domains ?? (domains.length > 0 ? domains : ['GEOPOLITICS'])
+
   const color   = selectedNode ? (NODE_COLORS[selectedNode.type] || LIME) : LIME
   const sevColor = (s: string) =>
     s === 'CRITICAL' ? '#FF3131' : s === 'HIGH' || s === 'WATCH' ? '#FFB800' : LIME
@@ -531,10 +661,6 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
                 <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.3 }}>◎</div>
                 Click any node on<br />the graph to analyze<br />India impact
               </div>
-            ) : !intel ? (
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: MUTED, textAlign: 'center', marginTop: 24 }}>
-                No intelligence data for this node
-              </div>
             ) : (
               <>
                 {/* node header */}
@@ -554,15 +680,15 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.1em' }}>INDIA IMPACT SCORE</span>
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, color: (intel?.score ?? 50) >= 75 ? '#FF3131' : (intel?.score ?? 50) >= 50 ? '#FFB800' : LIME, fontWeight: 700 }}>
-                      {intel?.score ?? '—'} / 100
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, color: score >= 75 ? '#FF3131' : score >= 50 ? '#FFB800' : LIME, fontWeight: 700 }}>
+                      {detailLoading ? '…' : score} / 100
                     </span>
                   </div>
                   <div style={{ height: 4, background: L06, borderRadius: 2 }}>
                     <div style={{
                       height: '100%',
-                      width: `${intel?.score ?? 0}%`,
-                      background: (intel?.score ?? 0) >= 75 ? '#FF3131' : (intel?.score ?? 0) >= 50 ? '#FFB800' : LIME,
+                      width: `${score}%`,
+                      background: score >= 75 ? '#FF3131' : score >= 50 ? '#FFB800' : LIME,
                       borderRadius: 3,
                       transition: 'width 0.5s ease',
                     }} />
@@ -571,7 +697,7 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
 
                 {/* domain tags */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                  {(intel?.domains ?? []).map(d => (
+                  {domainList.map(d => (
                     <span key={d} style={{
                       fontFamily: 'JetBrains Mono, monospace',
                       fontSize: 9,
@@ -586,12 +712,15 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
                   ))}
                 </div>
 
+                {/* node connection mini graph */}
+                <NodeImpactGraph nodeId={selectedNode.id} nodeDetail={nodeDetail} />
+
                 {/* consequences */}
                 <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.1em', marginBottom: 8 }}>
                   STRATEGIC IMPLICATIONS
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(intel?.bullets ?? []).map((b, i) => (
+                  {bullets.map((b, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                       <span style={{ color: color, fontSize: 8, marginTop: 3, flexShrink: 0 }}>◆</span>
                       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: W55, lineHeight: 1.7 }}>{b}</span>
@@ -706,12 +835,12 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
                   NODE PROPERTIES
                 </div>
                 {[
-                  ['NAME',       selectedNode.name],
-                  ['WIKIDATA',   selectedNode.wikidataId],
-                  ['TYPE',       selectedNode.type.replace(/_/g, ' ')],
-                  ['IMPACT',     `${selectedNode.impactScore} / 100`],
-                  ['CONFIDENCE', `${(selectedNode.confidence * 100).toFixed(0)}%`],
-                  ['LAT / LNG',  `${selectedNode.lat.toFixed(2)}, ${selectedNode.lng.toFixed(2)}`],
+                  ['NAME',       nodeDetail?.name        || selectedNode.name],
+                  ['WIKIDATA',   nodeDetail?.wikidata_id || selectedNode.wikidataId || '—'],
+                  ['TYPE',       (nodeDetail?.ontology_category || selectedNode.type).replace(/_/g, ' ')],
+                  ['CONNECTIONS',String(nodeDetail?.total_connections ?? '—')],
+                  ['FIRST SEEN', nodeDetail?.first_seen  || '—'],
+                  ['LAST SEEN',  nodeDetail?.last_seen   || '—'],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${L06}` }}>
                     <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED }}>{k}</span>
@@ -723,23 +852,37 @@ function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoN
                   <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.1em', marginBottom: 8 }}>
                     CONNECTED EDGES
                   </div>
-                  {edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).map((e, i) => (
-                    <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${L06}` }}>
-                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: W55 }}>
-                        {e.source === selectedNode.id
-                          ? `→ ${nodes.find(n => n.id === e.target)?.name || e.target}`
-                          : `← ${nodes.find(n => n.id === e.source)?.name || e.source}`}
-                      </span>
-                      <span style={{
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: 9,
-                        color: e.conflictFlag ? '#FF3131' : L45,
-                        marginLeft: 8,
-                      }}>
-                        {e.relation}
-                      </span>
-                    </div>
-                  ))}
+                  {detailLoading ? (
+                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED }}>Loading…</div>
+                  ) : nodeDetail ? (
+                    <>
+                      {[...(nodeDetail.outgoing_edges || []).map((e: any) => ({ ...e, dir: '→', peer: e.target })),
+                        ...(nodeDetail.incoming_edges || []).map((e: any) => ({ ...e, dir: '←', peer: e.source }))
+                      ].slice(0, 12).map((e: any, i: number) => (
+                        <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${L06}` }}>
+                          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: W55 }}>
+                            {e.dir} {e.peer}
+                          </span>
+                          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: e.india_impact === 'HIGH' ? '#FF3131' : e.india_impact === 'MEDIUM' ? '#FFB800' : L45, marginLeft: 8 }}>
+                            {(e.relation || '').replace(/_/g, ' ')} · {e.india_impact}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).map((e, i) => (
+                      <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${L06}` }}>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: W55 }}>
+                          {e.source === selectedNode.id
+                            ? `→ ${nodes.find(n => n.id === e.target)?.name || e.target}`
+                            : `← ${nodes.find(n => n.id === e.source)?.name || e.source}`}
+                        </span>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: e.conflictFlag ? '#FF3131' : L45, marginLeft: 8 }}>
+                          {e.relation}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </>
             )}

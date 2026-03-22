@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Globe from '../components/Globe'
 import Ticker from '../components/Ticker'
 import { NODES, NODE_COLORS } from '../data/mockdata'
+import { api } from '../api/bharatgraph'
 import type { GeoNode } from '../data/mockdata'
 
 // ─── ontology descriptions ───────────────────────────────────────────────────
@@ -314,8 +315,12 @@ export default function Terminal() {
   const handleQuery = useCallback(async () => {
     if (!queryInput.trim()) return
     setIsQuerying(true)
-    await new Promise(r => setTimeout(r, 800))
-    setQueryResult('Open the QUERIES page for full intelligence analysis.')
+    try {
+      const res = await api.query(queryInput)
+      setQueryResult(res.answer || 'No intelligence found for that query.')
+    } catch {
+      setQueryResult('Backend unavailable. Start uvicorn on port 8000.')
+    }
     setIsQuerying(false)
   }, [queryInput])
 

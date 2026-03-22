@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import * as d3 from 'd3'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api, useWhatIf } from '../api/bharatgraph'
@@ -98,6 +99,111 @@ function StatCard({
           {sub}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHATIF GRAPH — network disruption visualisation
+// ─────────────────────────────────────────────────────────────────────────────
+function WhatIfGraph({ result }: { result: WhatIfResponse }) {
+  const svgRef  = useRef<SVGSVGElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [dims, setDims] = useState({ w: 400, h: 240 })
+
+  useEffect(() => {
+    const ro = new ResizeObserver(e => {
+      const { width, height } = e[0].contentRect
+      setDims({ w: width, h: height })
+    })
+    if (wrapRef.current) ro.observe(wrapRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!svgRef.current || !result) return
+    const { w, h } = dims
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const ic = (impact: string) =>
+      impact === 'HIGH' ? '#FF3131' : impact === 'MEDIUM' ? '#FFB800' : 'rgba(200,240,37,0.35)'
+
+    const nodeMap = new Map<string, { id: string; isRemoved: boolean; impact: string }>()
+    nodeMap.set(result.removed_node, { id: result.removed_node, isRemoved: true, impact: 'HIGH' })
+    ;(result.affected_edges || []).forEach((e: any) => {
+      const s = e.subject || e.source || ''
+      const o = e.object  || e.target || ''
+      if (s && s !== result.removed_node) nodeMap.set(s, { id: s, isRemoved: false, impact: e.india_impact || 'LOW' })
+      if (o && o !== result.removed_node) nodeMap.set(o, { id: o, isRemoved: false, impact: e.india_impact || 'LOW' })
+    })
+
+    const nodeArr = Array.from(nodeMap.values()).slice(0, 16)
+    const nodeIds = new Set(nodeArr.map(n => n.id))
+    const linkArr = (result.affected_edges || []).slice(0, 16)
+      .map((e: any) => ({ source: e.subject || e.source || '', target: e.object || e.target || '', impact: e.india_impact || 'LOW' }))
+      .filter((e: any) => nodeIds.has(e.source) && nodeIds.has(e.target))
+
+    const sim = d3.forceSimulation(nodeArr as any)
+      .force('link', d3.forceLink(linkArr).id((d: any) => d.id).distance(55).strength(0.6))
+      .force('charge', d3.forceManyBody().strength(-140))
+      .force('center', d3.forceCenter(w / 2, h / 2))
+      .force('collision', d3.forceCollide(20))
+
+    const g = svg.append('g')
+    g.append('circle').attr('cx', w / 2).attr('cy', h / 2).attr('r', 38)
+      .attr('fill', 'rgba(255,49,49,0.04)').attr('stroke', 'rgba(255,49,49,0.18)')
+      .attr('stroke-dasharray', '4,3').attr('stroke-width', 1)
+
+    const links = g.append('g').selectAll('line').data(linkArr).join('line')
+      .attr('stroke', (d: any) => ic(d.impact))
+      .attr('stroke-width', (d: any) => d.impact === 'HIGH' ? 2.5 : 1.5)
+      .attr('stroke-opacity', 0.65)
+      .attr('stroke-dasharray', (d: any) => d.impact === 'HIGH' ? '5,2' : 'none')
+
+    const isolatedSet = new Set(result.isolated_nodes || [])
+    const nodeGs = g.append('g').selectAll('g').data(nodeArr).join('g')
+
+    nodeGs.filter((d: any) => isolatedSet.has(d.id)).append('circle')
+      .attr('r', 12).attr('fill', 'none').attr('stroke', '#FFB800')
+      .attr('stroke-dasharray', '2,2').attr('stroke-width', 1.5)
+
+    nodeGs.append('circle')
+      .attr('r', (d: any) => d.isRemoved ? 13 : 7)
+      .attr('fill', (d: any) => d.isRemoved ? 'rgba(255,49,49,0.15)' : `${ic(d.impact)}18`)
+      .attr('stroke', (d: any) => d.isRemoved ? '#FF3131' : ic(d.impact))
+      .attr('stroke-width', (d: any) => d.isRemoved ? 2.5 : 1.5)
+
+    nodeGs.filter((d: any) => d.isRemoved).append('text')
+      .attr('text-anchor', 'middle').attr('dy', '0.35em')
+      .attr('font-size', '13px').attr('fill', '#FF3131').attr('font-weight', 'bold').text('✕')
+
+    nodeGs.append('text')
+      .attr('dy', (d: any) => d.isRemoved ? 24 : 17)
+      .attr('text-anchor', 'middle')
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('font-size', '7.5px')
+      .attr('fill', (d: any) => d.isRemoved ? '#FF3131' : ic(d.impact))
+      .text((d: any) => { const n = String(d.id); return n.length > 11 ? n.slice(0, 11) + '…' : n })
+
+    sim.on('tick', () => {
+      links.attr('x1', (d: any) => (d.source as any).x).attr('y1', (d: any) => (d.source as any).y)
+           .attr('x2', (d: any) => (d.target as any).x).attr('y2', (d: any) => (d.target as any).y)
+      nodeGs.attr('transform', (d: any) => `translate(${d.x},${d.y})`)
+    })
+
+    return () => { sim.stop() }
+  }, [dims, result])
+
+  return (
+    <div style={{ padding: '16px 28px', borderBottom: `1px solid ${L12}` }}>
+      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.12em', marginBottom: 8 }}>
+        NETWORK DISRUPTION MAP
+      </div>
+      <div ref={wrapRef} style={{ width: '100%', height: 240, background: 'rgba(0,0,0,0.25)', border: `1px solid ${L12}` }}>
+        <svg ref={svgRef} width={dims.w} height={dims.h} style={{ width: '100%' }} />
+      </div>
     </div>
   )
 }
@@ -540,6 +646,9 @@ export default function WhatIf() {
                     />
                   </div>
                 </div>
+
+                {/* network disruption map */}
+                <WhatIfGraph result={result!} />
 
                 {/* domain breakdown */}
                 <div style={{ padding: '20px 28px', borderBottom: `1px solid ${L12}` }}>
