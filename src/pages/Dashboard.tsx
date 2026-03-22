@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
-import { NODES, EDGES, NODE_COLORS, ALERTS } from '../data/mockdata'
-import type { GeoNode, GeoEdge, Alert } from '../data/mockdata'
+import { NODE_COLORS } from '../data/mockdata'
+import type { GeoNode, GeoEdge } from '../data/mockdata'
+import { api, useGraph, useStats } from '../api/bharatgraph'
+
 
 // ── palette ───────────────────────────────────────────────────────────────────
 const LIME   = '#c8f025'
@@ -11,7 +13,6 @@ const L20    = 'rgba(200,240,37,0.20)'
 const L12    = 'rgba(200,240,37,0.12)'
 const L06    = 'rgba(200,240,37,0.06)'
 const L03    = 'rgba(200,240,37,0.03)'
-const TEAL   = '#084556'
 const MUTED  = 'rgba(255,255,255,0.22)'
 const WHITE  = 'rgba(255,255,255,0.88)'
 const W55    = 'rgba(255,255,255,0.55)'
@@ -484,7 +485,7 @@ function TimeMachine({ value, onChange }: { value: Date; onChange: (d: Date) => 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTEL PANEL (right column)
 // ─────────────────────────────────────────────────────────────────────────────
-function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; alerts: Alert[] }) {
+function IntelPanel({ selectedNode, alerts, nodes, edges }: { selectedNode: GeoNode | null; alerts: any[]; nodes: GeoNode[]; edges: GeoEdge[] }) {
   const [tab, setTab] = useState<'IMPACT' | 'ALERTS' | 'DETAIL'>('IMPACT')
   const nav = useNavigate()
 
@@ -530,6 +531,10 @@ function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; al
                 <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.3 }}>◎</div>
                 Click any node on<br />the graph to analyze<br />India impact
               </div>
+            ) : !intel ? (
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: MUTED, textAlign: 'center', marginTop: 24 }}>
+                No intelligence data for this node
+              </div>
             ) : (
               <>
                 {/* node header */}
@@ -549,15 +554,15 @@ function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; al
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.1em' }}>INDIA IMPACT SCORE</span>
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, color: intel!.score >= 75 ? '#FF3131' : intel!.score >= 50 ? '#FFB800' : LIME, fontWeight: 700 }}>
-                      {intel!.score} / 100
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, color: (intel?.score ?? 50) >= 75 ? '#FF3131' : (intel?.score ?? 50) >= 50 ? '#FFB800' : LIME, fontWeight: 700 }}>
+                      {intel?.score ?? '—'} / 100
                     </span>
                   </div>
                   <div style={{ height: 4, background: L06, borderRadius: 2 }}>
                     <div style={{
                       height: '100%',
-                      width: `${intel!.score}%`,
-                      background: intel!.score >= 75 ? '#FF3131' : intel!.score >= 50 ? '#FFB800' : LIME,
+                      width: `${intel?.score ?? 0}%`,
+                      background: (intel?.score ?? 0) >= 75 ? '#FF3131' : (intel?.score ?? 0) >= 50 ? '#FFB800' : LIME,
                       borderRadius: 3,
                       transition: 'width 0.5s ease',
                     }} />
@@ -566,7 +571,7 @@ function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; al
 
                 {/* domain tags */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                  {intel!.domains.map(d => (
+                  {(intel?.domains ?? []).map(d => (
                     <span key={d} style={{
                       fontFamily: 'JetBrains Mono, monospace',
                       fontSize: 9,
@@ -586,7 +591,7 @@ function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; al
                   STRATEGIC IMPLICATIONS
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {intel!.bullets.map((b, i) => (
+                  {(intel?.bullets ?? []).map((b, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                       <span style={{ color: color, fontSize: 8, marginTop: 3, flexShrink: 0 }}>◆</span>
                       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: W55, lineHeight: 1.7 }}>{b}</span>
@@ -718,12 +723,12 @@ function IntelPanel({ selectedNode, alerts }: { selectedNode: GeoNode | null; al
                   <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: MUTED, letterSpacing: '0.1em', marginBottom: 8 }}>
                     CONNECTED EDGES
                   </div>
-                  {EDGES.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).map(e => (
-                    <div key={e.id} style={{ padding: '5px 0', borderBottom: `1px solid ${L06}` }}>
+                  {edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).map((e, i) => (
+                    <div key={i} style={{ padding: '5px 0', borderBottom: `1px solid ${L06}` }}>
                       <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: W55 }}>
                         {e.source === selectedNode.id
-                          ? `→ ${NODES.find(n => n.id === e.target)?.name || e.target}`
-                          : `← ${NODES.find(n => n.id === e.source)?.name || e.source}`}
+                          ? `→ ${nodes.find(n => n.id === e.target)?.name || e.target}`
+                          : `← ${nodes.find(n => n.id === e.source)?.name || e.source}`}
                       </span>
                       <span style={{
                         fontFamily: 'JetBrains Mono, monospace',
@@ -755,15 +760,50 @@ export default function Dashboard() {
   const [filterImpact,   setFilterImpact]   = useState('ALL')
   const [searchTerm,     setSearchTerm]     = useState('')
   const [cutoffDate,     setCutoffDate]     = useState(NOW)
-  const [hoveredNode,    setHoveredNode]    = useState<string | null>(null)
+  const [alerts,         setAlerts]         = useState<any[]>([])
+
+  // ── Real API data ──────────────────────────────────────────
+  const { data: graphData, loading: graphLoading } = useGraph(
+    filterDomain !== 'ALL' ? filterDomain : undefined,
+    filterImpact !== 'ALL' ? filterImpact : undefined,
+  )
+  const { data: statsData } = useStats()
+
+  // Map API nodes to GeoNode shape for D3
+  const NODES: GeoNode[] = (graphData?.nodes || []).map((n: any) => ({
+    id:          n.id,
+    name:        n.id,
+    lat:         0,
+    lng:         0,
+    type:        (n.ontology_category || 'neutral') as any,
+    wikidataId:  n.wikidata_id || '',
+    impactScore: 50,
+    confidence:  0.75,
+  }))
+
+  const EDGES: GeoEdge[] = (graphData?.links || []).map((e: any, i: number) => ({
+    id:           `e${i}`,
+    source:       e.source,
+    target:       e.target,
+    relation:     e.relation || '',
+    confidence:   e.confidence || 0.75,
+    conflictFlag: e.conflict_flag || false,
+    validFrom:    e.valid_from || '',
+    sourceUrl:    e.source_url || '',
+  }))
+
+  // Fetch alerts once
+  useEffect(() => {
+    api.alerts().then(r => setAlerts(r.alerts || [])).catch(() => {})
+  }, [])
 
   const selectedNode = NODES.find(n => n.id === selectedNodeId) || null
 
-  // Stats
-  const totalNodes  = NODES.length
-  const totalEdges  = EDGES.length
-  const highEdges   = EDGES.filter(e => e.conflictFlag).length
-  const lastUpdated = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+  // Stats from real API, fallback to computed
+  const totalNodes  = statsData?.total_nodes  ?? NODES.length
+  const totalEdges  = statsData?.total_edges  ?? EDGES.length
+  const highEdges   = statsData?.high_impact_edges ?? EDGES.filter(e => e.conflictFlag).length
+  const lastUpdated = statsData?.last_updated ?? new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
 
   const DOMAINS = ['ALL', 'GEOPOLITICS', 'ECONOMICS', 'DEFENSE', 'TECHNOLOGY', 'CLIMATE', 'SOCIETY']
   const IMPACTS  = ['ALL', 'HIGH', 'CRITICAL']
@@ -960,7 +1000,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <IntelPanel selectedNode={selectedNode} alerts={ALERTS} />
+          <IntelPanel selectedNode={selectedNode} alerts={alerts} nodes={NODES} edges={EDGES} />
         </div>
       </div>
     </div>

@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Ticker from '../components/Ticker'
 import MiniGraph from '../components/MiniGraph'
-import { ALERTS } from '../data/mockdata'
+import { ALERTS as MOCK_ALERTS } from '../data/mockdata'
 import type { Alert } from '../data/mockdata'
+import { api } from '../api/bharatgraph'
 
 const SEV_COLOR: Record<string, string> = {
   CRITICAL: '#FF3131',
@@ -32,8 +33,38 @@ const NAV = [
 
 export default function Alerts() {
   const nav = useNavigate()
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [filter, setFilter] = useState<Filter>('ALL')
+  const [openId,     setOpenId]     = useState<string | null>(null)
+  const [filter,     setFilter]     = useState<Filter>('ALL')
+  const [liveAlerts, setLiveAlerts] = useState<Alert[]>([])
+
+  useEffect(() => {
+    api.alerts()
+      .then(r => {
+        if (r.alerts && r.alerts.length > 0) {
+          const mapped: Alert[] = r.alerts.map((a: any, i: number) => ({
+            id:             `live-${i}`,
+            number:         i + 1,
+            severity:       a.threat_level === 'HIGH' ? 'CRITICAL' : a.threat_level === 'MEDIUM' ? 'HIGH' : 'WATCH',
+            title:          a.pattern,
+            subtitle:       a.description,
+            timestamp:      'live',
+            region:         a.domain,
+            confidence:     0.85,
+            pattern:        a.pattern,
+            steps:          (a.nodes || []).map((n: string) => `${n} detected`),
+            edges:          (a.evidence || []).slice(0, 3).map((e: any) => `${e.asset || e.actor || e.zone || '?'}: ${e.context || ''}`),
+            recommendation: a.watch_for,
+            nodes:          a.nodes || [],
+          }))
+          setLiveAlerts(mapped)
+        } else {
+          setLiveAlerts(MOCK_ALERTS)
+        }
+      })
+      .catch(() => setLiveAlerts(MOCK_ALERTS))
+  }, [])
+
+  const ALERTS = liveAlerts.length > 0 ? liveAlerts : MOCK_ALERTS
 
   const filtered = ALERTS.filter(a =>
     filter === 'ALL' ? true :
