@@ -93,11 +93,30 @@ export interface NodeDetailResponse extends GraphNode {
   wikidata_url:      string | null
 }
 
+export interface KeyFact {
+  claim:      string
+  source:     string   // "KB" | "LIVE" | "EXPERT"
+  confidence: number
+  impact:     string   // "HIGH" | "MEDIUM" | "LOW"
+}
+
 export interface QueryResponse {
-  question:     string
-  answer:       string
-  evidence:     GraphEdge[]
-  sources_used: number
+  // structured fields
+  headline?:      string
+  assessment?:    string
+  key_facts?:     KeyFact[]
+  graph_gaps?:    string | null
+  watch_signals?: string[]
+  data_sources?:  { kb_edges: number; live_edges: number; coverage: string }
+  // legacy compat
+  question:       string
+  answer:         string
+  evidence:       GraphEdge[]
+  sources_used:   number
+  kb_edges?:      GraphEdge[]
+  live_edges?:    GraphEdge[]
+  total_evidence?: number
+  entities_matched?: string[]
 }
 
 export interface AlertEvidence {
@@ -196,7 +215,7 @@ export const api = {
 
   /** Natural language query → LLM answer + evidence edges */
   query: (question: string) =>
-    post<QueryResponse>('/query', { question }),
+  post<QueryResponse>('/query', { question }),
 
   /**
    * What-If simulation — remove a node, see impact.

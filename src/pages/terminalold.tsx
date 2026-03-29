@@ -306,17 +306,7 @@ export default function Terminal() {
   const nav = useNavigate()
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [queryInput, setQueryInput]         = useState('')
-  type QueryResult = {
-    headline?: string
-    assessment?: string
-    key_facts?: { claim: string; source: string; confidence: number; impact: string }[]
-    graph_gaps?: string | null
-    watch_signals?: string[]
-    data_sources?: { kb_edges: number; live_edges: number; coverage: string }
-    // error fallback
-    error?: string
-  }
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null)
+  const [queryResult, setQueryResult]       = useState<string | null>(null)
   const [isQuerying, setIsQuerying]         = useState(false)
   const [activePage]                        = useState('TERMINAL')
 
@@ -327,17 +317,10 @@ export default function Terminal() {
     setIsQuerying(true)
     try {
       const res = await api.query(queryInput)
-      setQueryResult({
-        headline:      res.headline,
-        assessment:    res.assessment || res.answer,
-        key_facts:     res.key_facts,
-        graph_gaps:    res.graph_gaps,
-        watch_signals: res.watch_signals,
-        data_sources:  res.data_sources,
-      })
+      setQueryResult(res.answer || 'No intelligence found for that query.')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setQueryResult({ error: `Query failed: ${msg}` })
+      setQueryResult(`Query failed: ${msg}`)
     }
     setIsQuerying(false)
   }, [queryInput])
@@ -426,136 +409,22 @@ export default function Terminal() {
           </div>
 
           {/* result / suggestions */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 p-3 overflow-y-auto">
             {queryResult ? (
-              queryResult.error ? (
-                <div className="p-3 font-mono text-xs" style={{ color: '#FF3131' }}>
-                  {queryResult.error}
+              <div>
+                <div
+                  className="font-mono text-xxs tracking-widest mb-2"
+                  style={{ color: L45 }}
+                >
+                  RESPONSE
                 </div>
-              ) : (
-                <div className="flex flex-col gap-0">
-
-                  {/* coverage badge */}
-                  {queryResult.data_sources && (
-                    <div
-                      className="px-3 py-1.5 flex items-center gap-2 font-mono text-xxs"
-                      style={{ borderBottom: `1px solid ${L12}`, background: L03 }}
-                    >
-                      <span style={{ color: MUTED }}>GRAPH</span>
-                      <span style={{
-                        color: queryResult.data_sources.coverage === 'RICH' ? LIME
-                             : queryResult.data_sources.coverage === 'PARTIAL' ? '#FFB800'
-                             : '#FF3131'
-                      }}>
-                        ● {queryResult.data_sources.coverage}
-                      </span>
-                      <span style={{ color: MUTED }}>
-                        {queryResult.data_sources.kb_edges}KB + {queryResult.data_sources.live_edges}LIVE
-                      </span>
-                    </div>
-                  )}
-
-                  {/* headline */}
-                  {queryResult.headline && (
-                    <div
-                      className="px-3 py-2.5 font-mono text-xs leading-snug"
-                      style={{ borderBottom: `1px solid ${L12}`, color: LIME }}
-                    >
-                      {queryResult.headline}
-                    </div>
-                  )}
-
-                  {/* assessment */}
-                  {queryResult.assessment && (
-                    <div
-                      className="px-3 py-3 font-mono text-xs leading-relaxed"
-                      style={{ borderBottom: `1px solid ${L12}`, color: WHITE7 }}
-                    >
-                      {queryResult.assessment}
-                    </div>
-                  )}
-
-                  {/* key facts */}
-                  {queryResult.key_facts && queryResult.key_facts.length > 0 && (
-                    <div style={{ borderBottom: `1px solid ${L12}` }}>
-                      <div
-                        className="px-3 py-1.5 font-mono text-xxs tracking-widest"
-                        style={{ color: L45 }}
-                      >
-                        KEY FACTS
-                      </div>
-                      {queryResult.key_facts.map((f, i) => (
-                        <div
-                          key={i}
-                          className="px-3 py-2 flex gap-2"
-                          style={{ borderTop: `1px solid ${L12}` }}
-                        >
-                          <div
-                            className="shrink-0 w-1 rounded-full mt-1"
-                            style={{
-                              height: 6, width: 6,
-                              background: f.impact === 'HIGH' ? '#FF3131'
-                                        : f.impact === 'MEDIUM' ? '#FFB800' : LIME
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-mono text-xs leading-snug" style={{ color: WHITE7 }}>
-                              {f.claim}
-                            </div>
-                            <div className="flex gap-2 mt-0.5">
-                              <span className="font-mono text-xxs" style={{ color: MUTED }}>
-                                {f.source}
-                              </span>
-                              <span className="font-mono text-xxs" style={{
-                                color: f.confidence >= 0.8 ? LIME
-                                     : f.confidence >= 0.6 ? '#FFB800' : '#FF3131'
-                              }}>
-                                {Math.round(f.confidence * 100)}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* watch signals */}
-                  {queryResult.watch_signals && queryResult.watch_signals.length > 0 && (
-                    <div style={{ borderBottom: `1px solid ${L12}` }}>
-                      <div
-                        className="px-3 py-1.5 font-mono text-xxs tracking-widest"
-                        style={{ color: L45 }}
-                      >
-                        WATCH SIGNALS
-                      </div>
-                      {queryResult.watch_signals.map((s, i) => (
-                        <div
-                          key={i}
-                          className="px-3 py-1.5 font-mono text-xs flex gap-2"
-                          style={{ borderTop: `1px solid ${L12}`, color: WHITE7 }}
-                        >
-                          <span style={{ color: '#FFB800' }}>›</span>
-                          {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* graph gap notice */}
-                  {queryResult.graph_gaps && (
-                    <div
-                      className="px-3 py-2 font-mono text-xxs leading-relaxed"
-                      style={{ color: MUTED, background: L03 }}
-                    >
-                      ⚠ GAP: {queryResult.graph_gaps}
-                    </div>
-                  )}
-
+                <div className="font-mono text-xs leading-relaxed" style={{ color: WHITE7 }}>
+                  {queryResult}
                 </div>
-              )
+              </div>
             ) : (
-              <div className="p-3 font-mono text-xs leading-loose" style={{ color: MUTED }}>
-                {['india israel defense tech', 'china leverage rare earths', 'string of pearls status', 'quad alliance effectiveness'].map(s => (
+              <div className="font-mono text-xs leading-loose" style={{ color: MUTED }}>
+                {['china leverage rare earths', 'treaty overlap neighbors', 'media tone balakot 2019', 'string of pearls status'].map(s => (
                   <div
                     key={s}
                     className="py-1 cursor-pointer transition-colors"

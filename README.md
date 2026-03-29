@@ -1,73 +1,113 @@
-# React + TypeScript + Vite
+# BharatIntel — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React interface for the BharatIntel strategic intelligence terminal. Five views: live query terminal, graph dashboard, alerts feed, query history, and what-if simulator.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Pages
 
-## React Compiler
+| Route | What it is |
+|---|---|
+| `/terminal` | Natural language query box + 3D globe + node registry. The main analyst interface. |
+| `/dashboard` | Graph stats, domain breakdown, interactive subgraph visualisation. |
+| `/alerts` | Pattern-matched early warning feed — threats flagged HIGH / MEDIUM / LOW. |
+| `/queries` | Saved query history with evidence counts. |
+| `/whatif` | Remove any node from the graph and see what breaks — affected edges, isolated nodes, domain impact. |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## Getting started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Runs on `http://localhost:5173`. Requires the backend running on port 8000 — see the [backend repo](../bharatIntel/README.md).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Deployment (one change needed)
+
+All API calls go through `src/api/bharatgraph.ts`. The `BASE` URL is currently hardcoded to `localhost:8000`, which works locally but not in production.
+
+Before deploying, update the constant:
+
+```ts
+// src/api/bharatgraph.ts  — change this line:
+const BASE = 'http://localhost:8000'
+
+// to this:
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 ```
+
+Then set `VITE_API_URL` to your Render backend URL in your hosting environment's build settings:
+
+```
+VITE_API_URL=https://bharatgraph-api.onrender.com
+```
+
+This works on Vercel, Netlify, Render Static Sites, and anywhere that injects env vars at build time. After that, `npm run build` produces a `dist/` folder that deploys anywhere.
+
+---
+
+## Stack
+
+| | |
+|---|---|
+| Framework | React 19 + TypeScript |
+| Build | Vite |
+| Styling | Tailwind CSS |
+| Routing | React Router v7 |
+| Animation | Framer Motion |
+| Globe | react-globe.gl (Three.js) |
+| Graph viz | Sigma + Graphology |
+| Map | React Leaflet |
+| Charts | D3 |
+
+---
+
+## Project structure
+
+```
+src/
+├── api/
+│   └── bharatgraph.ts     Typed API client — all backend calls go here
+├── pages/
+│   ├── Terminal.tsx
+│   ├── Dashboard.tsx
+│   ├── Alerts.tsx
+│   ├── Queries.tsx
+│   └── WhatIf.tsx
+├── components/
+│   ├── Globe.tsx
+│   ├── Ticker.tsx          Live news headline ticker
+│   ├── AlertCard.tsx
+│   ├── AlertsFeed.tsx
+│   ├── FlatMap.tsx
+│   └── MiniGraph.tsx
+├── data/
+│   └── mockdata.ts         Static node definitions used by the globe
+└── styles/
+    └── globals.css
+```
+
+If you need to touch the backend connection, `src/api/bharatgraph.ts` is the only file — all fetch calls are centralised there.
+
+---
+
+## Design system
+
+Colours and type scale are defined in `tailwind.config.js`:
+
+```
+bg       #030a0d   page background
+surface  #071218   panel background
+accent   #c8f025   lime — primary highlight, interactive elements
+teal     #084556   secondary surface
+danger   #FF3131   HIGH threat / error
+warn     #FFB800   MEDIUM threat / warning
+info     #00B4FF   informational
+```
+
+Font: **JetBrains Mono** throughout — loaded from Google Fonts in `index.html`.
