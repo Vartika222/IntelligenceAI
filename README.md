@@ -27,27 +27,7 @@ Runs on `http://localhost:5173`. Requires the backend running on port 8000 — s
 
 ---
 
-## Deployment (one change needed)
-
-All API calls go through `src/api/bharatgraph.ts`. The `BASE` URL is currently hardcoded to `localhost:8000`, which works locally but not in production.
-
-Before deploying, update the constant:
-
-```ts
-// src/api/bharatgraph.ts  — change this line:
-const BASE = 'http://localhost:8000'
-
-// to this:
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-```
-
-Then set `VITE_API_URL` to your Render backend URL in your hosting environment's build settings:
-
-```
-VITE_API_URL=https://bharatgraph-api.onrender.com
-```
-
-This works on Vercel, Netlify, Render Static Sites, and anywhere that injects env vars at build time. After that, `npm run build` produces a `dist/` folder that deploys anywhere.
+Link: 'https://bharat-intel-frontend.vercel.app'
 
 ---
 
